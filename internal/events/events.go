@@ -69,6 +69,9 @@ const (
 	TypeMergeFailed  = "merge_failed"
 	TypeMergeSkipped = "merge_skipped"
 
+	// Polecat lifecycle events
+	TypePolecatCompleted = "polecat_completed" // Polecat finished its assigned work
+
 	// Scheduler events
 	TypeSchedulerEnqueue        = "scheduler_enqueue"         // Bead scheduled for deferred dispatch
 	TypeSchedulerDispatch       = "scheduler_dispatch"        // Bead dispatched from scheduler
@@ -367,4 +370,23 @@ func SchedulerDispatchFailedPayload(beadID, rig, errMsg string) map[string]inter
 		"rig":   rig,
 		"error": errMsg,
 	}
+}
+
+// PolecatCompletedPayload creates a payload for polecat completion events.
+// exit: exit type (e.g., "COMPLETED", "PHASE_COMPLETE")
+// bead: the issue the polecat was working on
+// hasMR: whether the polecat submitted a merge request
+func PolecatCompletedPayload(rig, polecat, exit, bead string, hasMR bool) map[string]interface{} {
+	p := map[string]interface{}{
+		"rig":     rig,
+		"polecat": polecat,
+		"exit":    exit,
+	}
+	if bead != "" {
+		p["bead"] = bead
+	}
+	if hasMR {
+		p["has_mr"] = true
+	}
+	return p
 }

@@ -1093,7 +1093,20 @@ func (e *Engineer) HandleMRInfoSuccess(mr *MRInfo, result ProcessResult) {
 		_, _ = fmt.Fprintf(e.output, "[Engineer] Warning: failed to nudge mayor about merge: %v\n", err)
 	}
 
-	// 5. Log success
+	// 5. Emit merged event to feed stream (gt-kej)
+	actor := e.rig.Name + "/refinery"
+	worker := ""
+	if strings.HasPrefix(mr.Branch, "polecat/") {
+		// Extract polecat name from branch like "polecat/obsidian/gt-xyz@..."
+		parts := strings.SplitN(strings.TrimPrefix(mr.Branch, "polecat/"), "/", 2)
+		if len(parts) > 0 {
+			worker = parts[0]
+		}
+	}
+	_ = events.LogFeed(events.TypeMerged, actor,
+		events.MergePayload(mr.ID, worker, mr.Branch, ""))
+
+	// 6. Log success
 	_, _ = fmt.Fprintf(e.output, "[Engineer] ✓ Merged: %s (commit: %s)\n", mr.ID, result.MergeCommit)
 }
 
@@ -1172,6 +1185,18 @@ func (e *Engineer) HandleMRInfoFailure(mr *MRInfo, result ProcessResult) {
 			}
 		}
 	}
+
+	// Emit merge_failed event to feed stream (gt-kej)
+	failActor := e.rig.Name + "/refinery"
+	failWorker := ""
+	if strings.HasPrefix(mr.Branch, "polecat/") {
+		parts := strings.SplitN(strings.TrimPrefix(mr.Branch, "polecat/"), "/", 2)
+		if len(parts) > 0 {
+			failWorker = parts[0]
+		}
+	}
+	_ = events.LogFeed(events.TypeMergeFailed, failActor,
+		events.MergePayload(mr.ID, failWorker, mr.Branch, failureType))
 
 	// Log the failure - MR stays in queue but may be blocked
 	_, _ = fmt.Fprintf(e.output, "[Engineer] ✗ Failed: %s - %s\n", mr.ID, result.Error)
