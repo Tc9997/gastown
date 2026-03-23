@@ -29,6 +29,11 @@ type KeyMap struct {
 	Nudge          key.Binding
 	Handoff        key.Binding
 
+	// Tree view polecat actions
+	Attach key.Binding
+	Nuke   key.Binding
+	Sling  key.Binding
+
 	// Search/Filter
 	Search      key.Binding
 	Filter      key.Binding
@@ -110,6 +115,18 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("h"),
 			key.WithHelp("h", "handoff agent"),
 		),
+		Attach: key.NewBinding(
+			key.WithKeys("a"),
+			key.WithHelp("a", "attach to polecat"),
+		),
+		Nuke: key.NewBinding(
+			key.WithKeys("K"),
+			key.WithHelp("K", "nuke polecat"),
+		),
+		Sling: key.NewBinding(
+			key.WithKeys("s"),
+			key.WithHelp("s", "sling work to rig"),
+		),
 		Search: key.NewBinding(
 			key.WithKeys("/"),
 			key.WithHelp("/", "search"),
@@ -143,7 +160,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.PageUp, k.PageDown, k.Top, k.Bottom},
 		{k.Tab, k.FocusTree, k.FocusConvoy, k.FocusFeed, k.Enter, k.Expand},
-		{k.ToggleProblems, k.Nudge, k.Handoff},
+		{k.ToggleProblems, k.Nudge, k.Handoff, k.Attach, k.Nuke, k.Sling},
 		{k.Search, k.Filter, k.ClearFilter, k.Refresh},
 		{k.Help, k.Quit},
 	}

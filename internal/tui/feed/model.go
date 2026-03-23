@@ -1,7 +1,9 @@
 package feed
 
 import (
+	"fmt"
 	"os/exec"
+	"sort"
 	"sync"
 	"time"
 
@@ -113,6 +115,10 @@ type Model struct {
 	stuckDetector     *StuckDetector
 	lastProblemsCheck time.Time
 	problemsError     error // last error from problems fetch
+
+	// Tree view polecat selection state
+	selectedTreePolecat int      // index into selectablePolecats
+	selectablePolecats  []string // flat list of "rig/name" keys for selectable polecats
 
 	// Event source
 	eventChan <-chan Event
@@ -501,9 +507,22 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case key.Matches(msg, m.keys.Attach):
+		if m.viewMode == ViewActivity && m.focusedPanel == PanelTree {
+			return m.attachToSelectedTreePolecat()
+		}
+
+	case key.Matches(msg, m.keys.Sling):
+		if m.viewMode == ViewActivity && m.focusedPanel == PanelTree {
+			return m.slingToSelectedRig()
+		}
+
 	case key.Matches(msg, m.keys.Enter):
 		if m.viewMode == ViewProblems {
 			return m.attachToSelected()
+		}
+		if m.viewMode == ViewActivity && m.focusedPanel == PanelTree {
+			return m.attachToSelectedTreePolecat()
 		}
 
 	case key.Matches(msg, m.keys.Nudge):
@@ -516,14 +535,25 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.handoffSelected()
 		}
 
+	case key.Matches(msg, m.keys.Nuke):
+		if m.viewMode == ViewActivity && m.focusedPanel == PanelTree {
+			return m.nukeSelectedTreePolecat()
+		}
+
 	case key.Matches(msg, m.keys.Up):
 		if m.viewMode == ViewProblems {
 			return m.selectPrevProblem()
+		}
+		if m.viewMode == ViewActivity && m.focusedPanel == PanelTree && len(m.selectablePolecats) > 0 {
+			return m.selectPrevTreePolecat()
 		}
 
 	case key.Matches(msg, m.keys.Down):
 		if m.viewMode == ViewProblems {
 			return m.selectNextProblem()
+		}
+		if m.viewMode == ViewActivity && m.focusedPanel == PanelTree && len(m.selectablePolecats) > 0 {
+			return m.selectNextTreePolecat()
 		}
 	}
 
@@ -764,6 +794,154 @@ func (m *Model) handoffSelected() (tea.Model, tea.Cmd) {
 	})
 }
 
+// buildSelectablePolecats builds a flat list of selectable polecat keys from the tree.
+// Returns "rig/name" strings for each polecat. Caller must hold m.mu.
+func (m *Model) buildSelectablePolecats() []string {
+	var polecats []string
+	if m.polecatState == nil {
+		return polecats
+	}
+
+	// Sort rigs for stable ordering
+	rigNames := make([]string, 0, len(m.rigs))
+	for name := range m.rigs {
+		rigNames = append(rigNames, name)
+	}
+	sort.Strings(rigNames)
+
+	for _, rigName := range rigNames {
+		rig := m.rigs[rigName]
+		// Collect polecats from this rig, sorted by name
+		var names []string
+		for _, agent := range rig.Agents {
+			if agent.Role == "polecat" {
+				names = append(names, agent.Name)
+			}
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			polecats = append(polecats, rigName+"/"+name)
+		}
+	}
+	return polecats
+}
+
+// getSelectedTreePolecatInfo returns the PolecatInfo for the currently selected tree polecat.
+// Caller must hold m.mu.
+func (m *Model) getSelectedTreePolecatInfo() *PolecatInfo {
+	if len(m.selectablePolecats) == 0 || m.selectedTreePolecat < 0 || m.selectedTreePolecat >= len(m.selectablePolecats) {
+		return nil
+	}
+	key := m.selectablePolecats[m.selectedTreePolecat]
+	if m.polecatState == nil {
+		return nil
+	}
+	for i := range m.polecatState.Polecats {
+		p := &m.polecatState.Polecats[i]
+		if p.Rig+"/"+p.Name == key {
+			return p
+		}
+	}
+	return nil
+}
+
+// selectNextTreePolecat moves selection to next polecat in tree
+func (m *Model) selectNextTreePolecat() (tea.Model, tea.Cmd) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.selectablePolecats) == 0 {
+		return m, nil
+	}
+	m.selectedTreePolecat++
+	if m.selectedTreePolecat >= len(m.selectablePolecats) {
+		m.selectedTreePolecat = 0
+	}
+	m.updateViewContentLocked()
+	return m, nil
+}
+
+// selectPrevTreePolecat moves selection to previous polecat in tree
+func (m *Model) selectPrevTreePolecat() (tea.Model, tea.Cmd) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.selectablePolecats) == 0 {
+		return m, nil
+	}
+	m.selectedTreePolecat--
+	if m.selectedTreePolecat < 0 {
+		m.selectedTreePolecat = len(m.selectablePolecats) - 1
+	}
+	m.updateViewContentLocked()
+	return m, nil
+}
+
+// attachToSelectedTreePolecat attaches to the selected polecat's tmux session
+func (m *Model) attachToSelectedTreePolecat() (tea.Model, tea.Cmd) {
+	m.mu.RLock()
+	p := m.getSelectedTreePolecatInfo()
+	m.mu.RUnlock()
+	if p == nil || p.SessionName == "" {
+		return m, nil
+	}
+	if !p.SessionRunning {
+		return m, nil
+	}
+
+	m.closeOnce.Do(func() { close(m.done) })
+	var c *exec.Cmd
+	if tmux.IsInSameSocket() {
+		c = tmux.BuildCommand("switch-client", "-t", p.SessionName)
+	} else {
+		c = tmux.BuildCommand("attach-session", "-t", p.SessionName)
+	}
+	return m, tea.Sequence(
+		tea.ExitAltScreen,
+		tea.ExecProcess(c, func(err error) tea.Msg {
+			return tea.Quit()
+		}),
+	)
+}
+
+// nukeSelectedTreePolecat nukes the selected polecat
+func (m *Model) nukeSelectedTreePolecat() (tea.Model, tea.Cmd) {
+	m.mu.RLock()
+	p := m.getSelectedTreePolecatInfo()
+	m.mu.RUnlock()
+	if p == nil {
+		return m, nil
+	}
+	target := p.Rig + "/" + p.Name
+	c := exec.Command("gt", "polecat", "nuke", target, "--force")
+	return m, tea.ExecProcess(c, func(err error) tea.Msg {
+		return polecatUpdateMsg{} // Trigger refresh
+	})
+}
+
+// slingToSelectedRig opens an interactive bd ready view for the selected rig,
+// then drops the user to a shell to run gt sling with the rig pre-filled.
+func (m *Model) slingToSelectedRig() (tea.Model, tea.Cmd) {
+	m.mu.RLock()
+	p := m.getSelectedTreePolecatInfo()
+	m.mu.RUnlock()
+	if p == nil {
+		return m, nil
+	}
+	// Show ready beads so the user can pick one to sling to this rig.
+	// Exit TUI so the user can run: gt sling <bead> <rig>
+	m.closeOnce.Do(func() { close(m.done) })
+	script := fmt.Sprintf(
+		"echo '\\nReady beads to sling to %s:\\n' && bd ready 2>/dev/null; echo '\\nRun: gt sling <bead> %s\\n'",
+		p.Rig, p.Rig,
+	)
+	c := exec.Command("bash", "-c", script) //nolint:gosec // G204: script built from internal data
+	return m, tea.Sequence(
+		tea.ExitAltScreen,
+		tea.ExecProcess(c, func(err error) tea.Msg {
+			return tea.Quit()
+		}),
+	)
+}
+
 // updateViewportSizes recalculates viewport dimensions.
 // Acquires the write lock for the entire operation so that reads of
 // width/height/showHelp and writes to viewports are atomic with View().
@@ -839,6 +1017,16 @@ func (m *Model) updateViewContentLocked() {
 	if m.viewMode == ViewProblems {
 		m.problemsViewport.SetContent(m.renderProblemsContent())
 	} else {
+		// Rebuild selectable polecats list before rendering tree
+		m.selectablePolecats = m.buildSelectablePolecats()
+		// Clamp selection index
+		if m.selectedTreePolecat >= len(m.selectablePolecats) {
+			m.selectedTreePolecat = len(m.selectablePolecats) - 1
+		}
+		if m.selectedTreePolecat < 0 {
+			m.selectedTreePolecat = 0
+		}
+
 		m.treeViewport.SetContent(m.renderTree())
 		m.convoyViewport.SetContent(m.renderConvoys())
 		m.feedViewport.SetContent(m.renderFeed())

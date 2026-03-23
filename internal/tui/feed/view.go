@@ -430,6 +430,17 @@ func (m *Model) renderAgent(icon string, agent *Agent, indent int) string {
 
 	// Use polecat lifecycle state for color coding when available
 	if agent.Role == "polecat" && agent.PolecatState != "" {
+		// Check if this polecat is selected in tree view
+		isSelected := false
+		if m.focusedPanel == PanelTree && len(m.selectablePolecats) > 0 &&
+			m.selectedTreePolecat >= 0 && m.selectedTreePolecat < len(m.selectablePolecats) {
+			selectedKey := m.selectablePolecats[m.selectedTreePolecat]
+			agentKey := agent.Rig + "/" + name
+			isSelected = selectedKey == agentKey
+		}
+		if isSelected {
+			prefix = strings.Repeat(" ", indent-2) + SelectedStyle.Render("▶") + " "
+		}
 		return prefix + m.renderPolecatAgent(name, agent)
 	}
 
@@ -619,6 +630,11 @@ func (m *Model) renderStatusBar() string {
 			panelName = "feed"
 		}
 		left = fmt.Sprintf("[%s] %d events", panelName, len(m.events))
+		// Show selected polecat info when tree is focused
+		if m.focusedPanel == PanelTree && len(m.selectablePolecats) > 0 &&
+			m.selectedTreePolecat >= 0 && m.selectedTreePolecat < len(m.selectablePolecats) {
+			left += fmt.Sprintf(" | selected: %s", m.selectablePolecats[m.selectedTreePolecat])
+		}
 	}
 
 	// Short help
@@ -643,6 +659,18 @@ func (m *Model) renderShortHelp() string {
 			HelpKeyStyle.Render("h") + HelpDescStyle.Render(":handoff"),
 			HelpKeyStyle.Render("Tab") + HelpDescStyle.Render(":next"),
 			HelpKeyStyle.Render("?") + HelpDescStyle.Render(":help"),
+			HelpKeyStyle.Render("q") + HelpDescStyle.Render(":quit"),
+		}
+		return strings.Join(hints, "  ")
+	}
+	if m.focusedPanel == PanelTree && len(m.selectablePolecats) > 0 {
+		hints := []string{
+			HelpKeyStyle.Render("↑/↓") + HelpDescStyle.Render(":select"),
+			HelpKeyStyle.Render("a") + HelpDescStyle.Render(":attach"),
+			HelpKeyStyle.Render("K") + HelpDescStyle.Render(":nuke"),
+			HelpKeyStyle.Render("s") + HelpDescStyle.Render(":sling"),
+			HelpKeyStyle.Render("p") + HelpDescStyle.Render(":problems"),
+			HelpKeyStyle.Render("tab") + HelpDescStyle.Render(":switch"),
 			HelpKeyStyle.Render("q") + HelpDescStyle.Render(":quit"),
 		}
 		return strings.Join(hints, "  ")
