@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/steveyegge/gastown/internal/polecat"
 )
 
 // render produces the full TUI output
@@ -368,6 +369,7 @@ func (m *Model) mergePolecatsIntoRigs(lookup map[string]*PolecatInfo) {
 		agent.PolecatIssue = p.Issue
 		agent.PolecatSessionRunning = p.SessionRunning
 		agent.PolecatZombie = p.Zombie
+		agent.PolecatSessionName = p.SessionName
 	}
 }
 
@@ -493,8 +495,11 @@ func (m *Model) renderPolecatAgent(name string, agent *Agent) string {
 		stateSymbol = "?"
 	}
 
+	// Heartbeat staleness dot
+	heartbeatDot := m.renderHeartbeatDot(agent)
+
 	// Name colored by state
-	namePart := stateStyle.Render(stateSymbol+" "+name) + " " + stateStyle.Render(agent.PolecatState)
+	namePart := stateStyle.Render(stateSymbol+" "+name) + " " + stateStyle.Render(agent.PolecatState) + heartbeatDot
 
 	// Bead ID + title (if assigned)
 	beadPart := ""
@@ -514,6 +519,29 @@ func (m *Model) renderPolecatAgent(name string, agent *Agent) string {
 	}
 
 	return namePart + beadPart + activity
+}
+
+// renderHeartbeatDot renders a staleness indicator dot for a polecat agent.
+// Green (<1m), yellow (1-3m), red (>3m stale). Empty if no heartbeat data.
+func (m *Model) renderHeartbeatDot(agent *Agent) string {
+	if agent.PolecatSessionName == "" || m.townRoot == "" {
+		return ""
+	}
+
+	hb := polecat.ReadSessionHeartbeat(m.townRoot, agent.PolecatSessionName)
+	if hb == nil {
+		return ""
+	}
+
+	age := time.Since(hb.Timestamp)
+	switch {
+	case age < time.Minute:
+		return " " + HeartbeatFreshStyle.Render("●")
+	case age < 3*time.Minute:
+		return " " + HeartbeatWarnStyle.Render("●")
+	default:
+		return " " + HeartbeatStaleStyle.Render("●")
+	}
 }
 
 // renderFeed renders the event feed content.

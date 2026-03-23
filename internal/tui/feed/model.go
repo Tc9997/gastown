@@ -69,6 +69,7 @@ type Agent struct {
 	PolecatIssue          string // assigned bead ID
 	PolecatSessionRunning bool
 	PolecatZombie         bool
+	PolecatSessionName    string // session name for heartbeat lookup
 }
 
 // Rig represents a rig with its agents

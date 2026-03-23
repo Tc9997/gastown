@@ -179,6 +179,14 @@ var (
 	RigSummaryStatsStyle = lipgloss.NewStyle().
 				Foreground(colorDim)
 
+	// Heartbeat staleness styles (tree panel)
+	HeartbeatFreshStyle = lipgloss.NewStyle().
+				Foreground(colorSuccess) // Green: <1m
+	HeartbeatWarnStyle = lipgloss.NewStyle().
+				Foreground(colorWarning) // Yellow: 1-3m
+	HeartbeatStaleStyle = lipgloss.NewStyle().
+				Foreground(colorError) // Red: >3m
+
 	// Event symbols
 	EventSymbols = map[string]string{
 		"create":   "+",
