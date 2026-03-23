@@ -15,6 +15,7 @@ import (
 	"github.com/steveyegge/gastown/internal/channelevents"
 	"github.com/steveyegge/gastown/internal/config"
 	"github.com/steveyegge/gastown/internal/constants"
+	"github.com/steveyegge/gastown/internal/events"
 	"github.com/steveyegge/gastown/internal/git"
 	"github.com/steveyegge/gastown/internal/mail"
 	"github.com/steveyegge/gastown/internal/mayor"
@@ -161,6 +162,11 @@ func HandlePolecatDone(bd *BdCli, workDir, rigName string, msg *mail.Message, ro
 	// The polecat is idle either way — Mayor should consider slinging next bead. (GH#2727)
 	if result.Handled {
 		notifyMayorSlotOpen(workDir, rigName, payload.PolecatName, payload.Exit)
+
+		// Emit polecat_completed event to feed stream (gt-kej)
+		actor := rigName + "/witness"
+		_ = events.LogFeed(events.TypePolecatCompleted, actor,
+			events.PolecatCompletedPayload(rigName, payload.PolecatName, payload.Exit, payload.IssueID, payload.MRID != ""))
 	}
 
 	return result
@@ -215,9 +221,19 @@ func HandlePolecatDoneFromBead(bd *BdCli, workDir, rigName, polecatName string, 
 	}
 
 	if hasPendingMR {
-		return handlePolecatDonePendingMR(bd, workDir, rigName, payload, result)
+		result = handlePolecatDonePendingMR(bd, workDir, rigName, payload, result)
+	} else {
+		result = handlePolecatDoneNoMR(workDir, rigName, payload, result)
 	}
-	return handlePolecatDoneNoMR(workDir, rigName, payload, result)
+
+	// Emit polecat_completed event to feed stream (gt-kej)
+	if result.Handled {
+		actor := rigName + "/witness"
+		_ = events.LogFeed(events.TypePolecatCompleted, actor,
+			events.PolecatCompletedPayload(rigName, polecatName, payload.Exit, payload.IssueID, payload.MRID != ""))
+	}
+
+	return result
 }
 
 // TransitionPolecatToIdle sets a polecat's agent_state to idle after the witness

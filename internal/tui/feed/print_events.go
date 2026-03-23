@@ -158,6 +158,10 @@ func typeSymbol(eventType string) string {
 		return "\U0001F989" // owl
 	case "polecat_nudged":
 		return "\u26A1" // lightning
+	case "spawn":
+		return "\U0001F680" // rocket
+	case "polecat_completed":
+		return "\u2705" // white check mark
 	case "sling":
 		return "\U0001F3AF" // target
 	case "handoff":

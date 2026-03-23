@@ -474,6 +474,28 @@ func buildEventMessage(eventType string, payload map[string]interface{}) string 
 		}
 		return "escalation sent"
 
+	case "spawn":
+		polecat := getPayloadString(payload, "polecat")
+		rig := getPayloadString(payload, "rig")
+		if polecat != "" {
+			if rig != "" {
+				return fmt.Sprintf("%s spawned in %s", polecat, rig)
+			}
+			return fmt.Sprintf("%s spawned", polecat)
+		}
+		return "polecat spawned"
+
+	case "polecat_completed":
+		polecat := getPayloadString(payload, "polecat")
+		bead := getPayloadString(payload, "bead")
+		if polecat != "" && bead != "" {
+			return fmt.Sprintf("%s completed → %s", polecat, bead)
+		}
+		if polecat != "" {
+			return fmt.Sprintf("%s completed", polecat)
+		}
+		return "polecat completed"
+
 	case "sling":
 		bead := getPayloadString(payload, "bead")
 		target := getPayloadString(payload, "target")
