@@ -541,7 +541,7 @@ func (m *Model) renderEvent(e Event) string {
 		symbolStyle = EventCreateStyle
 	case "update":
 		symbolStyle = EventUpdateStyle
-	case "complete", "patrol_complete", "merged", "done":
+	case "complete", "patrol_complete", "merged", "done", "polecat_completed":
 		symbolStyle = EventCompleteStyle
 	case "fail", "merge_failed":
 		symbolStyle = EventFailStyle
