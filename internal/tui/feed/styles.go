@@ -171,6 +171,14 @@ var (
 				Foreground(colorError).
 				Bold(true)
 
+	// Rig summary bar styles
+	RigSummaryNameStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(colorPrimary)
+
+	RigSummaryStatsStyle = lipgloss.NewStyle().
+				Foreground(colorDim)
+
 	// Event symbols
 	EventSymbols = map[string]string{
 		"create":   "+",

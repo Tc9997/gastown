@@ -89,11 +89,12 @@ type Model struct {
 	feedViewport   viewport.Model
 
 	// Data
-	rigs         map[string]*Rig
-	events       []Event
-	convoyState  *ConvoyState
-	polecatState *PolecatState
-	townRoot     string
+	rigs           map[string]*Rig
+	events         []Event
+	convoyState    *ConvoyState
+	polecatState   *PolecatState
+	rigBeadCounts  map[string]BeadCounts
+	townRoot       string
 
 	// UI state
 	keys     KeyMap
@@ -173,6 +174,7 @@ func (m *Model) Init() tea.Cmd {
 		m.listenForEvents(),
 		m.fetchConvoys(),
 		m.fetchPolecatData(),
+		m.fetchRigBeadCounts(),
 		tea.SetWindowTitle("GT Feed"),
 	}
 	// If starting in problems view, fetch problems immediately
@@ -193,6 +195,11 @@ type convoyUpdateMsg struct {
 // polecatUpdateMsg is sent when polecat data is refreshed
 type polecatUpdateMsg struct {
 	state *PolecatState
+}
+
+// rigBeadCountMsg is sent when rig bead counts are refreshed
+type rigBeadCountMsg struct {
+	counts map[string]BeadCounts
 }
 
 // problemsUpdateMsg is sent when problems data is refreshed
@@ -285,6 +292,28 @@ func (m *Model) polecatRefreshTick() tea.Cmd {
 	})
 }
 
+// fetchRigBeadCounts returns a command that fetches per-rig bead counts.
+func (m *Model) fetchRigBeadCounts() tea.Cmd {
+	m.mu.RLock()
+	townRoot := m.townRoot
+	m.mu.RUnlock()
+
+	if townRoot == "" {
+		return nil
+	}
+	return func() tea.Msg {
+		counts := FetchRigBeadCounts(townRoot)
+		return rigBeadCountMsg{counts: counts}
+	}
+}
+
+// rigBeadCountRefreshTick returns a command that schedules the next bead count refresh
+func (m *Model) rigBeadCountRefreshTick() tea.Cmd {
+	return tea.Tick(10*time.Second, func(t time.Time) tea.Msg {
+		return rigBeadCountMsg{} // Empty counts triggers a refresh
+	})
+}
+
 // fetchProblems returns a command that fetches problem agent data
 func (m *Model) fetchProblems() tea.Cmd {
 	detector := m.stuckDetector
@@ -347,6 +376,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			// Tick fired - fetch new data
 			cmds = append(cmds, m.fetchPolecatData())
+		}
+
+	case rigBeadCountMsg:
+		if msg.counts != nil {
+			// Fresh data arrived - update state and schedule next tick
+			m.mu.Lock()
+			m.rigBeadCounts = msg.counts
+			m.updateViewContentLocked()
+			m.mu.Unlock()
+			cmds = append(cmds, m.rigBeadCountRefreshTick())
+		} else {
+			// Tick fired - fetch new data
+			cmds = append(cmds, m.fetchRigBeadCounts())
 		}
 
 	case problemsUpdateMsg:

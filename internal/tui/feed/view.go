@@ -25,10 +25,15 @@ func (m *Model) render() string {
 		problemsPanel := m.renderProblemsPanel()
 		sections = append(sections, problemsPanel)
 	} else {
-		// Activity view: three panels
+		// Activity view: three panels + summary bar
 		// Tree panel (top)
 		treePanel := m.renderTreePanel()
 		sections = append(sections, treePanel)
+
+		// Rig summary bar (between tree and convoy)
+		if summaryBar := m.renderRigSummaryBar(); summaryBar != "" {
+			sections = append(sections, summaryBar)
+		}
 
 		// Convoy panel (middle)
 		convoyPanel := m.renderConvoyPanel()
