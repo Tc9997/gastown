@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -188,8 +189,9 @@ func flattenGetRowCounts(db *sql.DB, dbName string) (map[string]int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	query := fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_schema = '%s' AND table_name NOT LIKE 'dolt_%%'", dbName)
-	rows, err := db.QueryContext(ctx, query)
+	// Use SHOW TABLES instead of information_schema.tables — the latter can
+	// return stale results after heavy rebase/squash operations in Dolt.
+	rows, err := db.QueryContext(ctx, fmt.Sprintf("SHOW TABLES FROM `%s`", dbName))
 	if err != nil {
 		return nil, err
 	}
@@ -200,6 +202,9 @@ func flattenGetRowCounts(db *sql.DB, dbName string) (map[string]int, error) {
 		var name string
 		if err := rows.Scan(&name); err != nil {
 			return nil, err
+		}
+		if strings.HasPrefix(name, "dolt_") {
+			continue
 		}
 		tables = append(tables, name)
 	}
