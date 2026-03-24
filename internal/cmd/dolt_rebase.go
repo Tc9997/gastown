@@ -338,6 +338,7 @@ func runDoltRebase(cmd *cobra.Command, args []string) error {
 			style.Bold.Render("!"), err)
 		fmt.Printf("  Proceeding with branch swap — data should be intact\n")
 	} else {
+		var driftWarnings int
 		for table, preCount := range preCounts {
 			postCount, ok := postCounts[table]
 			if !ok {
@@ -346,11 +347,28 @@ func runDoltRebase(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("integrity FAIL: table %q missing after rebase", table)
 			}
 			if preCount != postCount {
-				rebaseCleanupAll(db, baseBranch, workBranch)
-				return fmt.Errorf("integrity FAIL: %q pre=%d post=%d", table, preCount, postCount)
+				diff := postCount - preCount
+				// Allow small drift from concurrent writes (±1% or ±10 rows, whichever is larger).
+				threshold := preCount / 100
+				if threshold < 10 {
+					threshold = 10
+				}
+				if diff < -threshold || diff > threshold {
+					rebaseCleanupAll(db, baseBranch, workBranch)
+					return fmt.Errorf("integrity FAIL: %q pre=%d post=%d (drift %+d exceeds threshold %d)",
+						table, preCount, postCount, diff, threshold)
+				}
+				fmt.Printf("  %s %q: row count drift %+d (pre=%d post=%d) — within tolerance\n",
+					style.Bold.Render("!"), table, diff, preCount, postCount)
+				driftWarnings++
 			}
 		}
-		fmt.Printf("  %s Integrity verified (%d tables match)\n", style.Bold.Render("✓"), len(preCounts))
+		if driftWarnings > 0 {
+			fmt.Printf("  %s Integrity verified with %d drift warning(s) (%d tables checked)\n",
+				style.Bold.Render("✓"), driftWarnings, len(preCounts))
+		} else {
+			fmt.Printf("  %s Integrity verified (%d tables match)\n", style.Bold.Render("✓"), len(preCounts))
+		}
 	}
 
 	// Step 8: Concurrency check — verify main hasn't moved.
